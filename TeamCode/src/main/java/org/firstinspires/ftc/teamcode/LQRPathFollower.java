@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode;
-/**here is my mini rant no one asked for
- * i coded this in vscode and it reformated all my shi in here
- * now i gotta sit here and reformat like a noob
+/**
+ * LQR would be more useful for tuning turrets this year so restructure + recode
+ * Pathing is a non issue so any curve works
  */
 
 public class LQRPathFollower {
@@ -316,9 +316,12 @@ class TrapezoidalProfile {
     }
 
     double velocityAt(double t) {
-        if (t <= 0 || t >= totalTime) return 0;
-        if (t < accelTime) return maxAccel * t;
-        if (t < accelTime + cruiseTime) return peakVel;
+        if (t <= 0 || t >= totalTime)
+            return 0;
+        if (t < accelTime)
+            return maxAccel * t;
+        if (t < accelTime + cruiseTime)
+            return peakVel;
         return peakVel - maxAccel * (t - accelTime - cruiseTime);
     }
 

@@ -239,7 +239,6 @@ class QuinticHermitePath implements HolonomicPath {
 }
 
 
-
 class ArcLengthTable {
     private static final int DEFAULT_SAMPLES = 400;
     private final double[] tSamples;

@@ -8,3 +8,10 @@ pluginManagement {
 
 include ':FtcRobotController'
 include ':TeamCode'
+dependencyResolutionManagement {
+    versionCatalogs {
+        build {
+            from files('gradle/build.versions.toml')
+        }
+    }
+}
