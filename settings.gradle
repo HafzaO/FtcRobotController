@@ -6,8 +6,6 @@ pluginManagement {
     }
 }
 
-include ':FtcRobotController'
-include ':TeamCode'
 dependencyResolutionManagement {
     versionCatalogs {
         build {
