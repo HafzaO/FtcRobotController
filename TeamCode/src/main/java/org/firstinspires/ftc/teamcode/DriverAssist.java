@@ -1,141 +1,140 @@
 package org.firstinspires.ftc.teamcode;
 
-/**
- * Teleop driver assistance. Deliberately NOT the path-following stack.
- *
- * Drivers need the stick to feel connected to the robot. Running joystick input
- * through a trajectory generator adds latency and takes authority away at
- * exactly the moment a driver is reacting to something the path planner cannot
- * see. So translation stays raw, and the LQR is repurposed for the one thing
- * humans are measurably bad at: holding a precise heading while translating.
- *
- * THE AUTHORITY BUDGET, which is the part that is easy to get wrong.
- * The mecanum mixer sums translation and rotation into each wheel. If the
- * driver is already at full stick, there is no headroom left, and the heading
- * correction gets scaled away by output normalization precisely when the robot
- * is moving fastest and heading error grows quickest. Snap-to-angle then feels
- * like it "stops working at speed", which reads as a bug but is arithmetic.
- *
- * This class fixes an explicit budget: heading gets a reserved slice of output
- * authority, and translation is scaled to fit in what remains. The driver loses
- * a little top speed while the assist is active. That trade is stated out loud
- * rather than hidden, because the alternative is an assist that silently fails
- * under load.
- */
+//keeping the robot pointed in a perfectly straight line or snapping to a set angle while the driver translates and weaves around opponents
 public class DriverAssist {
 
-    private final double headingGain;
-    private final double maxAngularVelocity;
+    private final double hGain;
+//how aggressively the robot corrects its angle when bumped
+    private final double maxAV;
+// top spin speed your robot is physically capable of achieving (angular veloc)
     private final double headingAuthority;
-
+//if set to 0.3, 30% of your motor power goes to tracking heading, leaving 70% for driver movement
     private Double lockedHeading = null;
+//the driver has full manual turning control if null
+public DriverAssist(double iQ, double iR, double iDt, double iMaxAV, double iHA) {
+    if (iHA <= 0 || iHA >= 1) {
+        System.err.println("ERROR: headingAuthority must be between 0 and 1 (exclusive)");
+        return;
+    }
+    if (iMaxAV <= 0) {
+        System.err.println("ERROR: maxAngularVelocity must be greater than 0");
+        return;
+    }
 
-    /**
-     * @param q, r            LQR cost on heading error vs control effort.
-     *                        Gain works out near sqrt(q/r); start q=8, r=1.
-     * @param dt              nominal loop period
-     * @param headingAuthority fraction of output reserved for rotation while a
-     *                        lock is active. 0.3 is a reasonable start: snappy
-     *                        correction, and the driver keeps 70% of top speed.
-     */
-    public DriverAssist(double q, double r, double dt,
-                        double maxAngularVelocity, double headingAuthority) {
-        if (headingAuthority <= 0 || headingAuthority >= 1) {
-            throw new IllegalArgumentException("headingAuthority must be in (0, 1)");
+// to calculate and save the LQR heading gain put input variables into the LQR math formula
+    hGain = LQRPathFollower.scalarLqrGain(iDt, iQ, iR);
+    maxAV = iMaxAV;
+    headingAuthority = iHA;
+}
+
+
+    public static DriverAssist withDefaults(double maxAV) {
+//sets standard defaults as 20ms loop speed + reserves 30% of power budget for heading correction
+        return new DriverAssist(8.0, 1.0, 0.02, maxAV, 0.30);
+    }
+
+    public void lockHeading(double radians) {
+// lock onto a field angle (like 0 radians for facing the backdrop)
+// You would typically bind this method to a controller button press
+        lockedHeading = LQRPathFollower.normalizeAngle(radians);
+    }
+
+    public void snapToNearest(double hd, int divs) {
+        if (divs < 1) {
+            System.err.println("ERROR: divs must be 1 or greater");
+            return;
         }
-        if (maxAngularVelocity <= 0) throw new IllegalArgumentException("maxAngularVelocity must be > 0");
-        this.headingGain = LQRPathFollower.scalarLqrGain(dt, q, r);
-        this.maxAngularVelocity = maxAngularVelocity;
-        this.headingAuthority = headingAuthority;
+//Calculate the size of each angle step
+        double step = (2 * Math.PI) / divs;
+//Find how many steps fit into our current angle (and round it)
+        long roundedSteps = Math.round(hd / step);
+//Multiply back to get the closest exact step angle
+        double rawAngle = roundedSteps * step;
+//Clean up the angle so it stays between -PI and PI
+        lockedHeading = LQRPathFollower.normalizeAngle(rawAngle);
     }
 
-    public static DriverAssist withDefaults(double maxAngularVelocity) {
-        return new DriverAssist(8.0, 1.0, 0.02, maxAngularVelocity, 0.30);
+//break the angle lock ir check if there is a lock
+    public void release() {
+        lockedHeading = null;
+    }
+    public boolean isLocked() {
+        return lockedHeading != null;
+    }
+    public Double lockedHeading() {
+        return lockedHeading;
     }
 
-    /** Lock to a field angle in radians. Call on a button press. */
-    public void lockHeading(double radians) { lockedHeading = LQRPathFollower.normalizeAngle(radians); }
 
-    /** Lock to the nearest of N evenly spaced field angles. */
-    public void snapToNearest(double currentHeading, int divisions) {
-        if (divisions < 1) throw new IllegalArgumentException("divisions must be >= 1");
-        double step = 2 * Math.PI / divisions;
-        lockedHeading = LQRPathFollower.normalizeAngle(Math.round(currentHeading / step) * step);
-    }
+    //////////////////////////////////////////////////////////////////////
+    ///////////////////////Cubic Bezier Curve timeeee/////////////////////
+    //////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////
+    /////////////////these r so much cooler than */ right?////////////////
+    //////////////////////////////////////////////////////////////////////
 
-    public void release() { lockedHeading = null; }
-    public boolean isLocked() { return lockedHeading != null; }
-    public Double lockedHeading() { return lockedHeading; }
-
-    /**
-     * @param stickX,stickY  driver translation, already in FIELD frame and
-     *                       already deadbanded, each in [-1, 1]
-     * @param stickTurn      manual rotation in [-1, 1], used only when unlocked
-     * @param heading        measured heading, radians
-     * @return {FL, FR, BL, BR} powers
-     */
     public double[] update(double stickX, double stickY, double stickTurn, double heading) {
-        double rotation;
-        double translationScale;
 
+//This sets up method params + defines two empty vars
+// rotation (how fast the robot will spin)
+// translationScale (how much top speed the driver is allowed to use)
+        double r;
+        double tScale;
+
+// If the angle lock is off the robot behaves normal
+// Turning power matches the driver's right joystick (stickTurn)
+// and the driver retains 100% top speed (1.0)
         if (lockedHeading == null) {
-            rotation = stickTurn;
-            translationScale = 1.0;
-        } else {
-            double err = LQRPathFollower.normalizeAngle(lockedHeading - heading);
-            double omega = headingGain * err;                   // rad/s command
-            rotation = omega / maxAngularVelocity;              // normalized
-            rotation = Math.max(-headingAuthority, Math.min(headingAuthority, rotation));
-            // Reserve the budget whether or not the correction currently needs
-            // it, so behaviour does not change the instant error appears.
-            translationScale = 1.0 - headingAuthority;
+            r = stickTurn;
+            tScale = 1.0;
         }
 
-        // Field frame to robot frame. Same rotation as the autonomous path.
-        double c = Math.cos(heading), s = Math.sin(heading);
-        double vx = ( stickX * c + stickY * s) * translationScale;
-        double vy = (-stickX * s + stickY * c) * translationScale;
+//If the angle lock is onthen the code ignores the driver's right joystick
+// Instead it looks at the targett angle vs your actual gyro angle to find the error (err)
+// It multiplies this by a tuning constant (headingGain) to get a target spin speed
+// translates that into a -1.0 to 1.0 power scale
+// and clips it so it never uses more power than your reserved budget (headingAuthority)
+        else {
+            double err = LQRPathFollower.normalizeAngle(lockedHeading - heading);
+            double omega = hGain * err;
+            r = omega / maxAV;
+            r = Math.max(-headingAuthority, Math.min(headingAuthority, r));
+
+            //this reserves the power frfr rest is js there
+            tScale = 1.0 - headingAuthority;
+        }
+
+// Robot-Centric!
+        double vx = stickX * tScale;
+        double vy = stickY * tScale;
 
         double[] p = new double[]{
-                vx + vy + rotation,
-                vx - vy - rotation,
-                vx - vy + rotation,
-                vx + vy - rotation
+                vx + vy + r,
+                vx - vy - r,
+                vx - vy + r,
+                vx + vy - r
         };
 
         double rawMax = 0;
-        for (double v : p) rawMax = Math.max(rawMax, Math.abs(v));
-        double divisor = Math.max(1.0, rawMax);
-        for (int i = 0; i < 4; i++) p[i] /= divisor;
+        for (double v : p)
+            rawMax = Math.max(rawMax, Math.abs(v));
+        double d = Math.max(1.0, rawMax);
+        for (int i = 0; i < 4; i++)
+            p[i] /= d;
         return p;
     }
 
-    /**
-     * Build a short path from the robot's current pose to a scoring target, for
-     * a hold-to-score macro.
-     *
-     * Handle offsets are placed along each end's heading so the robot leaves and
-     * arrives facing sensibly instead of crabbing sideways into the structure.
-     * Handle length scales with distance, since a fixed handle produces a wild
-     * curve on short moves and a nearly straight one on long moves.
-     *
-     * Read the caveat: this generates geometry from live odometry and drives it
-     * immediately, with no field-element collision checking whatsoever. Bind it
-     * to hold-to-run, never toggle, so releasing the button always returns
-     * control instantly.
-     */
-    public static HolonomicPath scoreMacroPath(double curX, double curY, double curHeading,
-                                               double targetX, double targetY, double targetHeading) {
-        double dist = Math.hypot(targetX - curX, targetY - curY);
+
+    public static HolonomicPath scoreMacroPath(double curX, double curY, double curHeading, double tX, double tY, double tHeading) {
+        double dist = Math.hypot(tX - curX, tY - curY);
         double handle = Math.max(4.0, dist * 0.4);
-        return new CubicBezierPath(
-                new Vec2(curX, curY),
-                new Vec2(curX + Math.cos(curHeading) * handle,
-                        curY + Math.sin(curHeading) * handle),
-                new Vec2(targetX - Math.cos(targetHeading) * handle,
-                        targetY - Math.sin(targetHeading) * handle),
-                new Vec2(targetX, targetY));
+
+        return new CubicBezierPath( new Vec2(curX, curY), //Start
+                new Vec2(curX + Math.cos(curHeading) * handle, curY + Math.sin(curHeading) * handle), //Exit Vector
+                new Vec2(tX - Math.cos(tHeading) * handle, tY - Math.sin(tHeading) * handle), //Entry Vector
+                new Vec2(tX, tY)); //Destination
     }
+
 }
 
 

@@ -1,55 +1,59 @@
 package org.firstinspires.ftc.teamcode;
 
 public class ChassisDynamics {
+// this is the blueprint for robots weight, size + motor tuning numbers
+    private final double ks; //  ks = static friction (raw voltage needed to overcome friction + get wheels to move)
+    private final double kv; //  kv = voltage for constant velocity
+    private final double ka; //  ka = voltage to break inertia & acc
+    private final double nominalV; // target voltage to tune for 11V
+    private final double trackRadius;   // (halfTrackWidth + halfWheelBase), inches, dist from absolute center to corners to calculate turing levers (get enough torque)
+    private final double maxV; // 13.5V
 
-    private final double ks, kv, ka;
-    private final double nominalVoltage;
-    private final double trackRadius;   // (halfTrackWidth + halfWheelBase), inches
-    private final double maxVoltage;
+    private static final double MAX_C_BOOST = 1.25;
+    //safety compensation cap so batery doesnt drop too low during any time of the match
 
-    /**
-     * Cap on how far voltage compensation may scale a command UP as the battery
-     * sags. Dividing by the live battery voltage is the mathematically correct
-     * inversion, but it is also exactly the wrong thing to do during a brownout:
-     * the pack sags, the code demands more current to hold the same voltage, and
-     * the sag deepens. This cap keeps the correct behaviour in the normal range
-     * while refusing to chase a collapsing battery into a reset.
-     */
-    private static final double MAX_COMPENSATION_BOOST = 1.25;
+    public final double massKg;
+    public final double momentOfInertia;
+// weight distributon not rly altering motor power js to check info
 
-    /** Advisory only, not used by the control path. See class comment. */
-    public final double massKg, momentOfInertia;
+public ChassisDynamics(double iKs, double iKv, double iKa, double trackWinI, double wheelinI, double iNominalV, double iMaxV, double iMassKg, double iMOfIn) {
+    if (iKv <= 0) {
+        System.err.println("ERROR: kv must be > 0 (measure it don't guess fattie)");
+        return;
+    }
+    if (iKa < 0) {
+        System.err.println("ERROR: ka must be >= 0");
+        return;
+    }
+    if (iKs < 0) {
+        System.err.println("ERROR: ks must be >= 0");
+        return;
+    }
+    // Check track width and wheel base
+    if (trackWinI <= 0 || wheelBinI <= 0) {
+        System.err.println("ERROR: track width and wheel base aint > 0");
+        return;
+    }
+    ks = iKs;
+    kv = iKv;
+    ka = iKa;
 
-    public ChassisDynamics(double ks, double kv, double ka,
-                           double trackWidthInches, double wheelBaseInches,
-                           double nominalVoltage, double maxVoltage,
-                           double massKg, double momentOfInertia) {
-        if (kv <= 0) throw new IllegalArgumentException("kv must be > 0; measure it, do not guess");
-        if (ka < 0)  throw new IllegalArgumentException("ka must be >= 0");
-        if (ks < 0)  throw new IllegalArgumentException("ks must be >= 0");
-        if (trackWidthInches <= 0 || wheelBaseInches <= 0) {
-            throw new IllegalArgumentException("track width and wheel base must be > 0");
-        }
-        this.ks = ks; this.kv = kv; this.ka = ka;
-        this.trackRadius = (trackWidthInches + wheelBaseInches) / 2.0;
-        this.nominalVoltage = nominalVoltage;
-        this.maxVoltage = maxVoltage;
-        this.massKg = massKg;
-        this.momentOfInertia = momentOfInertia;
+    nominalV = iNominalV;
+    maxV = iMaxV;
+    massKg = iMassKg;
+    momentOfInertia = iMOfIn;
+
+    double tD = trackWidthInches + wheelBaseInches;
+    trackRadius = tD / 2.0;
     }
 
-    /** Typical 18in FTC mecanum on goBILDA 312rpm. Placeholders: MEASURE YOURS. */
     public static ChassisDynamics estimatedDefaults() {
+ //safe generic values for a typical 18x18-inch FTC robot running goBILDA 312 RPM motors change thse tho
         return new ChassisDynamics(0.08, 0.0155, 0.0022, 14.0, 14.0, 12.0, 12.0, 14.0, 0.45);
     }
 
-    /**
-     * Robot-frame chassis velocity and acceleration to wheel linear velocities.
-     * Sign convention MUST match the mixer used everywhere else:
-     *   FL = vx + vy + r*w    FR = vx - vy - r*w
-     *   BL = vx - vy + r*w    BR = vx + vy - r*w
-     */
-    public double[] wheelVelocities(double vx, double vy, double omega) {
+    public double[] wheelVs(double vx, double vy, double omega) {
+ //takes your desired overall robot movement velocities (vx = forward, vy = strafe, omega = rotation speed) and maps them to find how fast each wheel need to spin
         double r = trackRadius;
         return new double[]{
                 vx + vy + r * omega,
@@ -59,65 +63,80 @@ public class ChassisDynamics {
         };
     }
 
-    /**
-     * Full conversion: chassis motion to motor powers in [-1, 1].
-     *
-     * @param batteryVoltage live reading. Pass nominalVoltage to disable
-     *                       compensation entirely.
-     * @return {FL, FR, BL, BR} powers
-     */
-    public double[] toMotorPowers(double vx, double vy, double omega,
-                                  double ax, double ay, double alpha,
-                                  double batteryVoltage) {
-        double[] v = wheelVelocities(vx, vy, omega);
-        double[] a = wheelVelocities(ax, ay, alpha);
 
-        double[] volts = new double[4];
+    public double[] toMotorPowers(double vx, double vy, double omega, double ax, double ay, double alpha, double bV) {
+ //Calculate the movement vectors tgth for standard Mecanum dt i found online, returning a 4-item list w target speeds for [FL, FR, BL, BR]
+
+        double[] v = wheelVs(vx, vy, omega); //target velocity per wheel
+        double[] a = wheelVs(ax, ay, alpha); //target acc per wheel
+
+ //Runs V = k_s + (k_v dot v) + (k_a dot a) It calculates the raw voltage for each motor to match the paths
+        double[] v = new double[4];
         for (int i = 0; i < 4; i++) {
-            volts[i] = ks * Math.signum(v[i]) + kv * v[i] + ka * a[i];
-            // Ks must not inject a kick when the wheel is meant to be still.
-            if (Math.abs(v[i]) < 1e-6 && Math.abs(a[i]) < 1e-6) volts[i] = 0;
+            v[i] = ks * Math.signum(v[i]) + kv * v[i] + ka * a[i];
+
+//If a wheel is supposed to be still, force voltage to zero so ks doesn't make the motors jitter when breakiig or parking
+            if (Math.abs(v[i]) < 1e-6 && Math.abs(a[i]) < 1e-6)
+                v[i] = 0;
         }
 
-        // Scale down together if any wheel exceeds the supply, so the DIRECTION
-        // of travel is preserved. Clamping wheels independently would change
-        // the commanded heading, which is a subtle and very annoying bug.
-        double peak = 0;
-        for (double x : volts) peak = Math.max(peak, Math.abs(x));
-        if (peak > maxVoltage) {
-            double k = maxVoltage / peak;
-            for (int i = 0; i < 4; i++) volts[i] *= k;
+//Proportional Voltage Clamping!!
+// If the math calculates that a wheel needs more voltage than your battery can physically give (asking for 14V when you only have 12),
+// it scales down all 4 wheels together by the exact same ratio (k)
+// This maeks sure the bot drives in the exact direction instead of steering off
+        double p = 0;
+        for (double x : v) p = Math.max(p, Math.abs(x));
+
+        if (p > maxV) {
+            double k = maxV / p;
+            for (int i = 0; i < 4; i++)
+                v[i] *= k;
         }
 
-        double effective = batteryVoltage;
-        if (effective < 1e-3) effective = nominalVoltage;   // bad reading, fail safe
-        double compensation = nominalVoltage / effective;
-        if (compensation > MAX_COMPENSATION_BOOST) compensation = MAX_COMPENSATION_BOOST;
+//Battery Voltage Compensation.
+// If battery is fresh (13.5V), it scales motor inputs down slightly
+// If battery drops (11V), it scales inputs up to match
+// This makes auto behave the same no matter battery V
 
-        double[] powers = new double[4];
+        double e = bV;
+        if (e < 1e-3) e = nominalV;   // bad reading, fail safe
+        double c = nominalV / e;
+        if (c > MAX_C_BOOST) c = MAX_C_BOOST;
+
+// Converts the raw target V into a final scale ranging from -1.0 to 1.0 according to the FTC Hardware map
+// then it clamps them to not get errors and passes those out to the driving motors
+        double[] pwr = new double[4];
         for (int i = 0; i < 4; i++) {
-            double p = (volts[i] / nominalVoltage) * compensation;
-            powers[i] = Math.max(-1, Math.min(1, p));
+            double p = (v[i] / nominalV) * c;
+            pwr[i] = Math.max(-1, Math.min(1, p));
         }
-        return powers;
+        return pwr;
     }
 
-    /** True when the wheel voltages for this motion fit inside the supply. */
-    public boolean isFeasible(double vx, double vy, double omega,
-                              double ax, double ay, double alpha) {
-        double[] v = wheelVelocities(vx, vy, omega);
-        double[] a = wheelVelocities(ax, ay, alpha);
+// Auto path asking if this move is physically possible without exceeding our battery limits
+// and then It returns true or false
+    public boolean isFeasible(double vx, double vy, double omega, double ax, double ay, double alpha) {
+
+        double[] v = wheelVs(vx, vy, omega);
+        double[] a = wheelVs(ax, ay, alpha);
+
         for (int i = 0; i < 4; i++) {
-            double volts = ks * Math.signum(v[i]) + kv * v[i] + ka * a[i];
-            if (Math.abs(volts) > maxVoltage) return false;
+            double v = ks * Math.signum(v[i]) + kv * v[i] + ka * a[i];
+
+            if (Math.abs(v) > maxV)
+                return false;
         }
+
         return true;
     }
 
-    /** Highest sustainable straight-line speed, from the voltage budget. */
+// Calculates topp velocity of bot that is managable on a straight line based on the voltage budget we got
     public double maxAchievableVelocity() {
-        return (maxVoltage - ks) / kv;
+        return (maxV - ks) / kv;
     }
 
-    public double trackRadius() { return trackRadius; }
+// allows other pathing files to read the calculated trackRadius value
+    public double trackRadius() {
+        return trackRadius;
+    }
 }
