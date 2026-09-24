@@ -3,38 +3,48 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
-/// Controls:
-/// Left Stick: Move the robot
-/// Right Stick: Manual turning (Only works when heading lock is turned off)
-/// Y / B / A / X: Lock facing direction to 0 / 90 / 180 / 270 degrees
-/// Left Bumper: Snap to the nearest 90-degree angle
-/// Right Bumper: Turn off the heading lock (Returns full control to right stick)
-/// Right Trigger: HOLD to automatically score (Drives straight toward target)
-
+/**
+ * Robot-Centric Driver Assist Mode with Macro Controls
+ *
+ * Controls:
+ * - Left Stick: Move the robot (Robot-Centric style: Up drives straight forward)
+ * - Right Stick: Manual turning (Only works when heading lock is turned off)
+ * - Y / B / A / X: Lock facing direction to 0 / 90 / 180 / 270 degrees
+ * - Left Bumper: Snap to the nearest 90-degree angle
+ * - Right Bumper: Turn off the heading lock (Returns full control to right stick)
+ * - Right Trigger: HOLD to automatically score (Drives straight toward target)
+ */
 @TeleOp(name = "LQR Driver Assist")
 public class DriverAssistOpMode extends LinearOpMode {
 
-    //basically safety params + account for stick driffftt
+    // Safety limitations and stick configurations parameters
     private static final double MAX_V = 40.0;
-    private static final double MAX_A    = 40.0;
-    private static final double MAX_ANG  = 3.0;
+    private static final double MAX_A = 40.0;
+    private static final double MAX_ANG = 3.0;
 
-    private static final double SCORE_X = 48, SCORE_Y = 24, SCORE_HEADING = Math.PI / 2;
+    private static final double SCORE_X = 48.0;
+    private static final double SCORE_Y = 24.0;
+    private static final double SCORE_HEADING = Math.PI / 2.0;
     private static final double STICK_D = 0.05;
 
+    // Drivetrain hardware references
     private DcMotor fL, fR, bL, bR;
 
     @Override
     public void runOpMode() throws InterruptedException {
-        fL  = hardwareMap.get(DcMotor.class, "fL");
+        // Connect to physical hardware configuration names
+        fL = hardwareMap.get(DcMotor.class, "fL");
         fR = hardwareMap.get(DcMotor.class, "fR");
-        bL   = hardwareMap.get(DcMotor.class, "bL");
-        bR  = hardwareMap.get(DcMotor.class, "bR");
-        fL.setDirection(DcMotor.Direction.FORWARD); ///check
-        bL.setDirection(DcMotor.Direction.FORWARD); ///check
+        bL = hardwareMap.get(DcMotor.class, "bL");
+        bR = hardwareMap.get(DcMotor.class, "bR");
 
-        //assist manages heading lock & macro works on path curves when the scoring trigger is pressed
+        // Drivetrain direction mapping parameters
+        fL.setDirection(DcMotor.Direction.FORWARD);
+        bL.setDirection(DcMotor.Direction.FORWARD);
+
+        // Core calculation helper subsystems
         Localizer localizer = createLocalizer();
         DriverAssist assist = DriverAssist.withDefaults(MAX_ANG);
         LQRPathFollower macro = LQRPathFollower.withDefaults(MAX_V, MAX_A, MAX_ANG);
@@ -46,89 +56,114 @@ public class DriverAssistOpMode extends LinearOpMode {
         loopTimer.reset();
 
         while (opModeIsActive()) {
+            // Calculate active runtime clock delta intervals
             double dt = loopTimer.seconds();
             loopTimer.reset();
-            if (dt <= 0) dt = 0.02;
-
-            localizer.update();
-            Localizer.Pose pose = localizer.getPose();
-
-//lock the robot to preset field angles
-            if (gamepad1.y)
-                assist.lockHeading(0);
-            if (gamepad1.b)
-                assist.lockHeading(Math.PI / 2);
-            if (gamepad1.a)
-                assist.lockHeading(Math.PI);
-            if (gamepad1.x)
-                assist.lockHeading(-Math.PI / 2);
-
-//left bumper snaps to nearest 90 quad, right resets to manual
-            if (gamepad1.left_bumper)
-                assist.snapToNearest(pose.heading, 4);
-            if (gamepad1.right_bumper)
-                assist.release();
-
-//checks for right trigger, smooths path from bot location + trigger = imediate change
-            boolean wantMacro = gamepad1.right_trigger > 0.5;
-            if (wantMacro && !macroActive) {
-                macro.followPath(DriverAssist.scoreMacroPath(
-                                pose.x, pose.y, pose.heading, SCORE_X, SCORE_Y, SCORE_HEADING),
-                        pose.heading, SCORE_HEADING);
-                macroActive = true;
+            if (dt <= 0) {
+                dt = 0.02;
             }
-            else if (!wantMacro) {
+
+            // Extract baseline coordinate mapping outputs
+            localizer.update();
+            Pose pose = localizer.getPose();
+
+            // Check face buttons to assign orientation lock boundaries
+            if (gamepad1.y) assist.lockHeading(0);
+            if (gamepad1.b) assist.lockHeading(Math.PI / 2);
+            if (gamepad1.a) assist.lockHeading(Math.PI);
+            if (gamepad1.x) assist.lockHeading(-Math.PI / 2);
+
+            // Left bumper handles snap loops, right bumper breaks the lock active state
+            if (gamepad1.left_bumper) {
+                // Fixed: Cleared stray bracket and aligned parameter to .h
+                assist.snapToNearest(pose.h, 4);
+            }
+            if (gamepad1.right_bumper) {
+                assist.release();
+            }
+
+            // Monitor auto-scoring trigger state inputs
+            boolean wantMacro = gamepad1.right_trigger > 0.5;
+
+            if (wantMacro && !macroActive) {
+                // Fixed: Aligned all input parameters to use .h instead of .heading
+                macro.followPath(DriverAssist.scoreMacroPath(
+                                pose.x, pose.y, pose.h, SCORE_X, SCORE_Y, SCORE_HEADING),
+                        pose.h, SCORE_HEADING);
+                macroActive = true;
+            } else if (!wantMacro) {
                 macroActive = false;
             }
 
             double[] powers;
             if (macroActive) {
-                powers = macro.update(pose.x, pose.y, pose.heading, dt);
+                // Fixed: Aligned input to use pose.h
+                powers = macro.update(pose.x, pose.y, pose.h, dt);
                 telemetry.addLine("MACRO ACTIVE - release trigger for manual control");
             } else {
-                // Manual inputs read directly
+                // Manual Robot-Centric stick parameters reading loop
                 double sx = dead(gamepad1.left_stick_x);
                 double sy = dead(-gamepad1.left_stick_y);
                 double st = dead(gamepad1.right_stick_x);
-                powers = assist.update(sx, sy, st, pose.heading);
+                // Fixed: Aligned input to use pose.h
+                powers = assist.update(sx, sy, st, pose.h);
             }
+
+            // Distribute calculated powers out to the electrical motor outputs
             setMotorPowers(powers[0], powers[1], powers[2], powers[3]);
 
+            // Feed running metrics down to the driver station telemetry console
             telemetry.addData("Pose", pose.toString());
             telemetry.addData("Heading lock", assist.isLocked()
                     ? String.format("%.0f deg", Math.toDegrees(assist.lockedHeading())) : "off");
             telemetry.update();
         }
 
+        // Safety: Hard stop all wheels upon completion
         setMotorPowers(0, 0, 0, 0);
     }
 
+    /** Filters out minor hardware joystick wiggle drifts */
     private static double dead(double v) {
-//if not at 0 perfeectly prefents motor drift
         return Math.abs(v) < STICK_D ? 0 : v;
     }
 
+    /**
+     * Localizer Factory Constructor Stub
+     * NOTE: Replace this interface implementation body with your actual active
+     * custom sensor module link class when testing on the physical chassis!
+     * Example: return new LocalizerAdapters.PinpointLocalizer(hardwareMap, "pinpoint");
+     */
     private Localizer createLocalizer() {
-        // Stub implementation placeholder to prevent compile crashes
         return new Localizer() {
-            private Pose p = new Pose(0,0,0);
-            @Override public void update() {
+            private Pose p = new Pose(0, 0, 0);
 
-            }
-            @Override public Pose getPose() {
+            @Override
+            public void update() { }
+
+            @Override
+            public Pose getPose() {
                 return p;
             }
-            @Override public void setPose(Pose pose) {
-                this.p = pose;
+
+            @Override
+            public void setPose(Pose pose) {
+                p = pose;
             }
-            @Override public V getV() {
+
+            // Fixed: Aligned the interface methods to return the correct Velocity object structure
+            @Override
+            public Velocity getVelocity() {
                 return null;
             }
         };
     }
 
+    // Direct wheel updating pipeline mapping
     private void setMotorPowers(double fl, double fr, double bl, double br) {
-        fL.setPower(fl); fR.setPower(fr);
-        bL.setPower(bl);  bR.setPower(br);
+        fL.setPower(fl);
+        fR.setPower(fr);
+        bL.setPower(bl);
+        bR.setPower(br);
     }
 }

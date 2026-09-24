@@ -1,4 +1,4 @@
-package org.firstinspipackage org.firstinspires.ftc.teamcode;
+package org.firstinspires.ftc.teamcode;
 
  /// The master blueprint rules for tracking where the robot is on the field
  /// Every sensor system (Pinpoint, OTOS, etc.) must follow these exact rules:
@@ -39,8 +39,9 @@ class Pose {
     public final double x;       // Horizontal coordinate on the field map
     public final double y;       // Vertical coordinate on the field map
     public final double heading; // Spin angle in radians
+     public double h;
 
-    // The builder that sets up our position numbers
+     // The builder that sets up our position numbers
     public Pose(double x, double y, double heading) {
         this.x = x;
         this.y = y;

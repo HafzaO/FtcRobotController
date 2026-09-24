@@ -1,3 +1,4 @@
+
 package org.firstinspires.ftc.teamcode;
 
 // path rules for the robot to follow
@@ -16,7 +17,7 @@ public interface HolonomicPath {
     void setPt(int idx, Vec2 p);
     // Moves a specific guide anchor to reshape the path
 
-// Calculates how sharp a turn is (higher number = tighter turn)
+    // Calculates how sharp a turn is (higher number = tighter turn)
     default double curve(double t) {
         Vec2 v = vel(t); Vec2 a = acc(t);
         double sSq = v.x * v.x + v.y * v.y;
@@ -25,20 +26,22 @@ public interface HolonomicPath {
         return (v.x * a.y - v.y * a.x) / den;
     }
 
-// Finds the pure straight line direction the robot is facing along the path
+    // Finds the pure straight line direction the robot is facing along the path
     default Vec2 tan(double t) {
         Vec2 d = vel(t);
         double m = Math.hypot(d.x, d.y);
         if (m < 1e-9) return new Vec2(1, 0);
         return new Vec2(d.x / m, d.y / m);
     }
+
+    Vec2 pointAt(double t);
 }
 
 // Storable (X, Y) coordinate points or vector arrows
 final class Vec2 {
     final double x, y;
     Vec2(double x1, double y1){
-        x1 = x; y1 = y;
+        x = x1; y = y1;
     }
     Vec2 add(Vec2 o){
 // Adds vectors together
@@ -68,12 +71,12 @@ final class Vec2 {
 }
 
 // A straight line path from a start point to an end point
-class LinePath implements HolonomicPath {
+abstract class LinePath implements HolonomicPath {
     private Vec2 p0, p1; // Start and End points
 
-    LinePath(Vec2 pZ, Vec2 p) {
-        pZ = p0;
-        p = p1;
+    LinePath(Vec2 startPoint, Vec2 endPoint) {
+        p0 = startPoint;
+        p1 = endPoint;
     }
 
     @Override public Vec2 pos(double t){
@@ -100,7 +103,7 @@ class LinePath implements HolonomicPath {
 }
 
 // A curved spline shaped by stretching lines toward pull anchors
-class CubicBezierPath implements HolonomicPath {
+abstract class CubicBezierPath implements HolonomicPath {
     private final Vec2[] p = new Vec2[4]; // Array storing the 4 shape points
 
     CubicBezierPath(Vec2 p0, Vec2 p1, Vec2 p2, Vec2 p3) { p[0] = p0; p[1] = p1; p[2] = p2; p[3] = p3; }
@@ -133,14 +136,13 @@ class CubicBezierPath implements HolonomicPath {
         return "Cubic Bezier";
     }
     @Override public Vec2[] pts() {
-        }
         return new Vec2[]{p[0], p[1], p[2], p[3]};
     }
     @Override public void setPt(int i, Vec2 v) { if (i >= 0 && i < 4) p[i] = v; }
 }
 
 // Ultra smooth spline defined directly by speed and acceleration targets
-class QuinticHermitePath implements HolonomicPath {
+abstract class QuinticHermitePath implements HolonomicPath {
     private Vec2 p0, v0, a0, p1, v1, a1; // Start/End coordinates, velocities, and accelerations
     private double[] cx = new double[6]; // Horizontal math settings
     private double[] cy = new double[6]; // Vertical math settings
@@ -152,7 +154,14 @@ class QuinticHermitePath implements HolonomicPath {
 
     // Creates a spline setting endpoints with directions but zero starting acceleration
     static QuinticHermitePath fromTans(Vec2 s, Vec2 st, Vec2 e, Vec2 et) {
-        return new QuinticHermitePath(s, st, new Vec2(0, 0), e, et, new Vec2(0, 0));
+        return new QuinticHermitePath(s, st,
+                new Vec2(0, 0), e, et,
+                new Vec2(0, 0)) {
+            @Override
+            public Vec2 pointAt(double t) {
+                return null;
+            }
+        };
     }
 
     // Refreshes the math curves whenever parameters change

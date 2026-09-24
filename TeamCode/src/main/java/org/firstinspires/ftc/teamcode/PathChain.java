@@ -7,7 +7,7 @@ import java.util.List;
 //// Path Chain System
 /// Links multiple separate lines and curves into one long, continuous autonomous path.
 
-public class PathChain implements HolonomicPath {
+public abstract class PathChain implements HolonomicPath {
 
     // Storage buckets for tracking path pieces
     private final List<HolonomicPath> segs = new ArrayList<>();   // The shape segments
@@ -15,7 +15,7 @@ public class PathChain implements HolonomicPath {
     private final List<Double> starts = new ArrayList<>();        // Starting inch mark of each piece
     private double len; // Total length of the entire chain in inches
 
-// Constructor: Takes one or more path shapes and strings them together
+    // Constructor: Takes one or more path shapes and strings them together
     public PathChain(HolonomicPath... parts) {
         if (parts.length == 0) {
             throw new IllegalArgumentException("a chain needs at least one segment");
@@ -25,7 +25,7 @@ public class PathChain implements HolonomicPath {
         }
     }
 
-// Appends a new path piece to the end of our current list
+    // Appends a new path piece to the end of our current list
     private void add(HolonomicPath p) {
         ArcLengthTable t = new ArcLengthTable(p);
         starts.add(len);
@@ -43,7 +43,7 @@ public class PathChain implements HolonomicPath {
         return segs.get(i);
     }
 
-// Identifies which segment index a timeline fraction 't' falls inside
+    // Identifies which segment index a timeline fraction 't' falls inside
     public int segmentAt(double t) {
         double[] l = locate(t);
         if (l[0] == 0) {
@@ -52,9 +52,9 @@ public class PathChain implements HolonomicPath {
         return (int) l[0];
     }
 
-// Master lookup engine: translates a global path time fraction 't' into a specific segment index
+    // Master lookup engine: translates a global path time fraction 't' into a specific segment index
     private double[] locate(double t) {
-        t = LinePath.clamp01(t);
+        t = LinePath.clamp(t);
         double s = t * len; // Target distance in inches along the chain
         int idx = segs.size() - 1;
 
@@ -76,25 +76,36 @@ public class PathChain implements HolonomicPath {
     @Override
     public Vec2 pointAt(double t) {
         double[] l = locate(t);
-        return segs.get((int) l[0]).pointAt(l[1]);
-    }
-    @Override
-    public Vec2 derivativeAt(double t) {
-        double[] l = locate(t);
-        return segs.get((int) l[0]).derivativeAt(l[1]);
-    }
-    @Override
-    public Vec2 secondDerivativeAt(double t) {
-        double[] l = locate(t);
-        return segs.get((int) l[0]).secondDerivativeAt(l[1]);
-    }
-    @Override
-    public double curvatureAt(double t) {
-        double[] l = locate(t);
-        return segs.get((int) l[0]).curvatureAt(l[1]);
+        int segmentIndex = (int) l[0];
+        double localT = l[1];
+        return segs.get(segmentIndex).pointAt(localT);
     }
 
-// Text formatting method that builds a string of combined path names for telem
+    @Override
+    public Vec2 pos(double t) {
+        double[] l = locate(t);
+        int segmentIndex = (int) l[0];
+        double localT = l[1];
+        return segs.get(segmentIndex).pos(localT);
+    }
+
+    @Override
+    public Vec2 vel(double t) {
+        double[] l = locate(t);
+        int segmentIndex = (int) l[0];
+        double localT = l[1];
+        return segs.get(segmentIndex).vel(localT);
+    }
+
+    @Override
+    public Vec2 acc(double t) {
+        double[] l = locate(t);
+        int segmentIndex = (int) l[0];
+        double localT = l[1];
+        return segs.get(segmentIndex).acc(localT);
+    }
+
+    // Text formatting method that builds a string of combined path names for telem
     @Override
     public String name() {
         StringBuilder sb = new StringBuilder("Chain[");
@@ -107,31 +118,31 @@ public class PathChain implements HolonomicPath {
         return sb.append(']').toString();
     }
 
-// Gathers and outputs all control guide points from every single attached path segment
     @Override
-    public Vec2[] controlPoints() {
+    public Vec2[] pts() {
         List<Vec2> all = new ArrayList<>();
         for (HolonomicPath p : segs) {
-            all.addAll(Arrays.asList(p.controlPoints()));
+            Vec2[] segmentPoints = p.pts();
+            all.addAll(Arrays.asList(segmentPoints));
         }
         return all.toArray(new Vec2[0]);
     }
 
-    // Allows path designer software to grab and reposition an anchor point dynamically
     @Override
-    public void setControlPoint(int index, Vec2 p) {
+    public void setPt(int index, Vec2 newPoint) {
+        int remainingIndex = index;
         for (HolonomicPath seg : segs) {
-            int n = seg.controlPoints().length;
-            if (index < n) {
-                seg.setControlPoint(index, p);
+            int pointsInThisSegment = seg.pts().length;
+            if (remainingIndex < pointsInThisSegment) {
+                seg.setPt(remainingIndex, newPoint);
                 rebuild();
                 return;
             }
-            index -= n;
+            remainingIndex = remainingIndex - pointsInThisSegment;
         }
     }
 
-// Clears out calibration parameters and recalculates path tables from scratch
+    // Clears out calibration parameters and recalculates path tables from scratch
     private void rebuild() {
         List<HolonomicPath> copy = new ArrayList<>(segs);
         segs.clear();
@@ -143,7 +154,7 @@ public class PathChain implements HolonomicPath {
         }
     }
 
-/// Inner container class tracking structural seam parameters where two paths meet
+    /// Inner container class tracking structural seam parameters where two paths meet
     public static final class Joint {
         public final int index;
         public final double gap;   // Straight-line physical coordinate gap in inches
@@ -155,7 +166,7 @@ public class PathChain implements HolonomicPath {
             this.angle = angle;
         }
 
-// Returns true if the two path segments blend into each other smoothly without sudden jumps
+        // Returns true if the two path segments blend into each other smoothly without sudden jumps
         public boolean isSmooth() {
             return gap < 0.25 && angle < Math.toRadians(5);
         }
@@ -166,7 +177,7 @@ public class PathChain implements HolonomicPath {
         }
     }
 
-// Safety Checker: Loops through interior joints to detect broken or disjointed seams
+    // Safety Checker: Loops through interior joints to detect broken or disjointed seams
     public List<Joint> validate() {
         List<Joint> out = new ArrayList<>();
         for (int i = 0; i < segs.size() - 1; i++) {
@@ -176,11 +187,11 @@ public class PathChain implements HolonomicPath {
 // Measure spatial distance gap between segment transitions
             Vec2 endA = a.pointAt(1);
             Vec2 startB = b.pointAt(0);
-            double d = endA.distanceTo(startB);
+            double d = endA.dist(startB);
 
 // Run trigonometric dot-product calculations to find direction kinking angles
-            Vec2 ta = a.tangentAt(1);
-            Vec2 tb = b.tangentAt(0);
+            Vec2 ta = a.tan(1);
+            Vec2 tb = b.tan(0);
             double dot = Math.max(-1, Math.min(1, ta.dot(tb)));
 
             out.add(new Joint(i, d, Math.acos(dot)));
@@ -188,7 +199,7 @@ public class PathChain implements HolonomicPath {
         return out;
     }
 
-// Returns true if every interior path joint passes alignment threshold tolerances
+    // Returns true if every interior path joint passes alignment threshold tolerances
     public boolean isSmooth() {
         for (Joint j : validate()) {
             if (!j.isSmooth()) {

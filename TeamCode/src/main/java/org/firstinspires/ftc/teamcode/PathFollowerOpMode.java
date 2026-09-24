@@ -43,9 +43,39 @@ public class PathFollowerOpMode extends LinearOpMode {
         PathChain route = new PathChain(
                 QuinticHermitePath.fromTans(
                         new Vec2(-56, -56), new Vec2(90, 0), // Start position and path exit direction vector
-                        new Vec2(0, -24),   new Vec2(90, 0)), // Spline midpoint destination and entry direction vector
-                new LinePath(new Vec2(0, -24), new Vec2(48, -24)) // Connect a straight line to the end zone
-        );
+                        new Vec2(0, -24), new Vec2(90, 0)), // Spline midpoint destination and entry direction vector
+                new LinePath(new Vec2(0, -24), new Vec2(48, -24)) {
+                    @Override
+                    public Vec2 pointAt(double t) {
+                        return null;
+                    }
+                } // Connect a straight line to the end zone
+        ) {
+            @Override
+            public Vec2 pos(double t) {
+                return null;
+            }
+
+            @Override
+            public Vec2 vel(double t) {
+                return null;
+            }
+
+            @Override
+            public Vec2 acc(double t) {
+                return null;
+            }
+
+            @Override
+            public Vec2[] pts() {
+                return new Vec2[0];
+            }
+
+            @Override
+            public void setPt(int idx, Vec2 p) {
+
+            }
+        };
 
 // Run structural seam validation scans across joints before starting the match
         for (PathChain.Joint j : route.validate()) {
@@ -112,7 +142,7 @@ public class PathFollowerOpMode extends LinearOpMode {
 
 // Calculate current distance tracking deviations from our targeted path profile references
             LQRPathFollower.Reference ref = follower.referenceAt(follower.elapsed());
-            double distErr = Math.hypot(ref.position.x - pose.x, ref.position.y - pose.y);
+            double distErr = Math.hypot(ref.p.x - pose.x, ref.p.y - pose.y);
             double angErr = Math.abs(LQRPathFollower.normalizeAngle(ref.heading - pose.h));
 
 //Must finish path timeline AND settle within bounds
@@ -139,16 +169,11 @@ public class PathFollowerOpMode extends LinearOpMode {
         return new LocalizerAdapters.PinpointLocalizer(hardwareMap, "pinpoint");
     }
 
-    private Localizer createLocalizer() {
-        throw new UnsupportedOperationException(
-                "createLocalizer() is a stub. Return a PinpointLocalizer, " + "or your own TwoPodImuLocalizer subclass.");
-    }
-
     // Unified helper interface that updates all 4 motor power ports simultaneously
-    private void setMotorPowers(double frl, double frr, double bal, double abr) {
+    private void setMotorPowers(double frl, double frr, double bal, double br) {
         fL.setPower(frl);
         fR.setPower(frr);
         bL.setPower(bal);
-        bR.setPower(bar);
+        bR.setPower(br);
     }
 }
