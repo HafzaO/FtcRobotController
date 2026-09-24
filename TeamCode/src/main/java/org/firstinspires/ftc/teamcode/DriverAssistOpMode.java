@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 /**
@@ -20,9 +21,9 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 public class DriverAssistOpMode extends LinearOpMode {
 
     // Safety limitations and stick configurations parameters
-    private static final double MAX_V = 40.0;
-    private static final double MAX_A = 40.0;
-    private static final double MAX_ANG = 3.0;
+    private static final double MAX_V = 93.25;
+    private static final double MAX_A = 489.65;
+    private static final double MAX_ANG = 7.4;
 
     private static final double SCORE_X = 48.0;
     private static final double SCORE_Y = 24.0;
@@ -41,8 +42,8 @@ public class DriverAssistOpMode extends LinearOpMode {
         bR = hardwareMap.get(DcMotor.class, "bR");
 
         // Drivetrain direction mapping parameters
-        fL.setDirection(DcMotor.Direction.FORWARD);
-        bL.setDirection(DcMotor.Direction.FORWARD);
+        fL.setDirection(DcMotor.Direction.REVERSE);
+        bL.setDirection(DcMotor.Direction.REVERSE);
 
         // Core calculation helper subsystems
         Localizer localizer = createLocalizer();

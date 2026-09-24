@@ -7,14 +7,13 @@ import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 ///Full Autonomous Path Follower OpMode
-/// ***Links your Localizer sensors, the LQR path engine, and your drive motors together.*** ///
 @Autonomous(name = "LQR Path Follow")
 public class PathFollowerOpMode extends LinearOpMode {
 
 // Measured top physical capabilities of your chassis
-    private static final double MAX_VEL = 40.0;   //in/sec
-    private static final double MAX_ACCEL = 40.0; //in/sec^2
-    private static final double MAX_ANGULAR = 3.0; //radians/sec
+    private static final double MAX_VEL = 93.25;   //in/sec
+    private static final double MAX_ACCEL = 489.65; //in/sec^2
+    private static final double MAX_ANGULAR = 7.4; //radians/sec
 
 // Target arrival thresholds (Tolerances for completion check)
     private static final double DIST_TOL = 1.0;   //finish if within 1 inch of target
