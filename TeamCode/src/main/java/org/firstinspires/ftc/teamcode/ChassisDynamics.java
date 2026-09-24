@@ -63,7 +63,6 @@ public ChassisDynamics(double iKs, double iKv, double iKa, double trackWinI, dou
         };
     }
 
-
     public double[] toMotorPowers(double vx, double vy, double omega, double ax, double ay, double alpha, double bV) {
  //Calculate the movement vectors tgth for standard Mecanum dt i found online, returning a 4-item list w target speeds for [FL, FR, BL, BR]
 

@@ -4,168 +4,197 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Several paths strung together and presented as ONE path.
- *
- * The design decision worth noting: PathChain implements HolonomicPath itself.
- * That means the follower, the arc-length table and the motion profile need no
- * changes at all to support chaining, and a chain can even contain another
- * chain. The alternative (teaching the follower about segment lists) would have
- * put sequencing logic in three places instead of one.
- *
- * A chain is profiled as a SINGLE trajectory end to end, so the robot does not
- * stop at every joint. That is the whole point: stopping at each waypoint is
- * what makes an auto slow.
- *
- * CONTINUITY: validate() reports joints that are not smooth. A position gap
- * (C0) teleports the reference and the robot will lurch. A tangent-direction
- * break (C1) demands an instantaneous change of travel direction, which no
- * drivetrain can produce, so the robot rounds it off and leaves the path. These
- * are reported rather than auto-corrected, because silently "fixing" someone's
- * geometry hides a design mistake they need to see.
- */
+//// Path Chain System
+/// Links multiple separate lines and curves into one long, continuous autonomous path.
+
 public class PathChain implements HolonomicPath {
 
-    private final List<HolonomicPath> segments = new ArrayList<>();
-    private final List<ArcLengthTable> tables = new ArrayList<>();
-    private final List<Double> cumulativeStart = new ArrayList<>();
-    private double totalLength;
+    // Storage buckets for tracking path pieces
+    private final List<HolonomicPath> segs = new ArrayList<>();   // The shape segments
+    private final List<ArcLengthTable> tabs = new ArrayList<>();  // Distance lookup tables
+    private final List<Double> starts = new ArrayList<>();        // Starting inch mark of each piece
+    private double len; // Total length of the entire chain in inches
 
+// Constructor: Takes one or more path shapes and strings them together
     public PathChain(HolonomicPath... parts) {
-        if (parts.length == 0) throw new IllegalArgumentException("a chain needs at least one segment");
-        for (HolonomicPath p : parts) add(p);
+        if (parts.length == 0) {
+            throw new IllegalArgumentException("a chain needs at least one segment");
+        }
+        for (HolonomicPath p : parts) {
+            add(p);
+        }
     }
 
+// Appends a new path piece to the end of our current list
     private void add(HolonomicPath p) {
         ArcLengthTable t = new ArcLengthTable(p);
-        cumulativeStart.add(totalLength);
-        segments.add(p);
-        tables.add(t);
-        totalLength += t.totalLength();
+        starts.add(len);
+        segs.add(p);
+        tabs.add(t);
+        len += t.totalLength();
+    }
+    public double totalLength() {
+        return len;
+    }
+    public int segmentCount() {
+        return segs.size();
+    }
+    public HolonomicPath segment(int i) {
+        return segs.get(i);
     }
 
-    public double totalLength() { return totalLength; }
-    public int segmentCount()   { return segments.size(); }
-    public HolonomicPath segment(int i) { return segments.get(i); }
+// Identifies which segment index a timeline fraction 't' falls inside
+    public int segmentAt(double t) {
+        double[] l = locate(t);
+        if (l[0] == 0) {
+            return 0;
+        }
+        return (int) l[0];
+    }
 
-    /** Which segment index a global parameter t lands in. Useful for telemetry. */
-    public int segmentAt(double t) { return locate(t)[0] == 0 ? 0 : (int) locate(t)[0]; }
-
-    /**
-     * Maps global t in [0,1] to {segmentIndex, localT}.
-     * Global t is distributed by ARC LENGTH, not by segment count, so a 60 inch
-     * segment occupies six times the parameter span of a 10 inch one. Splitting
-     * t evenly per segment instead would make the robot crawl through long
-     * segments and sprint through short ones.
-     */
+// Master lookup engine: translates a global path time fraction 't' into a specific segment index
     private double[] locate(double t) {
         t = LinePath.clamp01(t);
-        double s = t * totalLength;
-        int idx = segments.size() - 1;
-        for (int i = 0; i < segments.size(); i++) {
-            double start = cumulativeStart.get(i);
-            double end = start + tables.get(i).totalLength();
-            if (s <= end || i == segments.size() - 1) { idx = i; break; }
+        double s = t * len; // Target distance in inches along the chain
+        int idx = segs.size() - 1;
+
+// Find which path block owns this distance
+        for (int i = 0; i < segs.size(); i++) {
+            double start = starts.get(i);
+            double end = start + tabs.get(i).totalLength();
+            if (s <= end || i == segs.size() - 1) {
+                idx = i;
+                break;
+            }
         }
-        double localS = s - cumulativeStart.get(idx);
-        double localT = tables.get(idx).tAtArcLength(localS);
+
+// Translate global distance into a local percentage timer for that specific segment
+        double localS = s - starts.get(idx);
+        double localT = tabs.get(idx).tAtArcLength(localS);
         return new double[]{idx, localT};
     }
-
-    @Override public Vec2 pointAt(double t) {
+    @Override
+    public Vec2 pointAt(double t) {
         double[] l = locate(t);
-        return segments.get((int) l[0]).pointAt(l[1]);
+        return segs.get((int) l[0]).pointAt(l[1]);
+    }
+    @Override
+    public Vec2 derivativeAt(double t) {
+        double[] l = locate(t);
+        return segs.get((int) l[0]).derivativeAt(l[1]);
+    }
+    @Override
+    public Vec2 secondDerivativeAt(double t) {
+        double[] l = locate(t);
+        return segs.get((int) l[0]).secondDerivativeAt(l[1]);
+    }
+    @Override
+    public double curvatureAt(double t) {
+        double[] l = locate(t);
+        return segs.get((int) l[0]).curvatureAt(l[1]);
     }
 
-    /**
-     * NOTE: returns the SEGMENT-LOCAL derivative, not one rescaled to global t.
-     * Only direction is consumed downstream (tangentAt normalises it, and
-     * curvatureAt is overridden below to delegate), so the magnitude never
-     * matters. Rescaling would need dLocalT/dGlobalT, which is discontinuous at
-     * every joint and would produce misleading numbers.
-     */
-    @Override public Vec2 derivativeAt(double t) {
-        double[] l = locate(t);
-        return segments.get((int) l[0]).derivativeAt(l[1]);
-    }
-
-    @Override public Vec2 secondDerivativeAt(double t) {
-        double[] l = locate(t);
-        return segments.get((int) l[0]).secondDerivativeAt(l[1]);
-    }
-
-    /** Delegated so curvature stays exact despite the local parameterization. */
-    @Override public double curvatureAt(double t) {
-        double[] l = locate(t);
-        return segments.get((int) l[0]).curvatureAt(l[1]);
-    }
-
-    @Override public String name() {
+// Text formatting method that builds a string of combined path names for telem
+    @Override
+    public String name() {
         StringBuilder sb = new StringBuilder("Chain[");
-        for (int i = 0; i < segments.size(); i++) {
-            if (i > 0) sb.append(" + ");
-            sb.append(segments.get(i).name());
+        for (int i = 0; i < segs.size(); i++) {
+            if (i > 0) {
+                sb.append(" + ");
+            }
+            sb.append(segs.get(i).name());
         }
         return sb.append(']').toString();
     }
 
-    @Override public Vec2[] controlPoints() {
+// Gathers and outputs all control guide points from every single attached path segment
+    @Override
+    public Vec2[] controlPoints() {
         List<Vec2> all = new ArrayList<>();
-        for (HolonomicPath p : segments) all.addAll(Arrays.asList(p.controlPoints()));
+        for (HolonomicPath p : segs) {
+            all.addAll(Arrays.asList(p.controlPoints()));
+        }
         return all.toArray(new Vec2[0]);
     }
 
-    @Override public void setControlPoint(int index, Vec2 p) {
-        for (HolonomicPath seg : segments) {
+    // Allows path designer software to grab and reposition an anchor point dynamically
+    @Override
+    public void setControlPoint(int index, Vec2 p) {
+        for (HolonomicPath seg : segs) {
             int n = seg.controlPoints().length;
-            if (index < n) { seg.setControlPoint(index, p); rebuild(); return; }
+            if (index < n) {
+                seg.setControlPoint(index, p);
+                rebuild();
+                return;
+            }
             index -= n;
         }
     }
 
+// Clears out calibration parameters and recalculates path tables from scratch
     private void rebuild() {
-        List<HolonomicPath> copy = new ArrayList<>(segments);
-        segments.clear(); tables.clear(); cumulativeStart.clear(); totalLength = 0;
-        for (HolonomicPath p : copy) add(p);
+        List<HolonomicPath> copy = new ArrayList<>(segs);
+        segs.clear();
+        tabs.clear();
+        starts.clear();
+        len = 0;
+        for (HolonomicPath p : copy) {
+            add(p);
+        }
     }
 
-    // ---------------- continuity checking ----------------
-
+/// Inner container class tracking structural seam parameters where two paths meet
     public static final class Joint {
         public final int index;
-        public final double positionGapInches;
-        public final double tangentBreakRadians;
-        Joint(int index, double gap, double breakRad) {
-            this.index = index; this.positionGapInches = gap; this.tangentBreakRadians = breakRad;
+        public final double gap;   // Straight-line physical coordinate gap in inches
+        public final double angle; // Tangent path angle breakdown in radians
+
+        Joint(int index, double gap, double angle) {
+            this.index = index;
+            this.gap = gap;
+            this.angle = angle;
         }
+
+// Returns true if the two path segments blend into each other smoothly without sudden jumps
         public boolean isSmooth() {
-            return positionGapInches < 0.25 && tangentBreakRadians < Math.toRadians(5);
+            return gap < 0.25 && angle < Math.toRadians(5);
         }
-        @Override public String toString() {
-            return String.format("joint %d: gap %.2f in, tangent break %.1f deg%s",
-                    index, positionGapInches, Math.toDegrees(tangentBreakRadians),
-                    isSmooth() ? "" : "   <-- NOT SMOOTH");
+
+        @Override
+        public String toString() {
+            return String.format("joint %d: gap %.2f in, tangent break %.1f deg%s", index, gap, Math.toDegrees(angle), isSmooth() ? "" : "   <-- NOT SMOOTH");
         }
     }
 
-    /** One entry per interior joint. Empty for a single-segment chain. */
+// Safety Checker: Loops through interior joints to detect broken or disjointed seams
     public List<Joint> validate() {
         List<Joint> out = new ArrayList<>();
-        for (int i = 0; i < segments.size() - 1; i++) {
-            HolonomicPath a = segments.get(i), b = segments.get(i + 1);
-            Vec2 endA = a.pointAt(1), startB = b.pointAt(0);
-            double gap = endA.distanceTo(startB);
+        for (int i = 0; i < segs.size() - 1; i++) {
+            HolonomicPath a = segs.get(i);
+            HolonomicPath b = segs.get(i + 1);
 
-            Vec2 ta = a.tangentAt(1), tb = b.tangentAt(0);
+// Measure spatial distance gap between segment transitions
+            Vec2 endA = a.pointAt(1);
+            Vec2 startB = b.pointAt(0);
+            double d = endA.distanceTo(startB);
+
+// Run trigonometric dot-product calculations to find direction kinking angles
+            Vec2 ta = a.tangentAt(1);
+            Vec2 tb = b.tangentAt(0);
             double dot = Math.max(-1, Math.min(1, ta.dot(tb)));
-            out.add(new Joint(i, gap, Math.acos(dot)));
+
+            out.add(new Joint(i, d, Math.acos(dot)));
         }
         return out;
     }
 
-    /** Convenience: true when every joint is within tolerance. */
+// Returns true if every interior path joint passes alignment threshold tolerances
     public boolean isSmooth() {
-        for (Joint j : validate()) if (!j.isSmooth()) return false;
+        for (Joint j : validate()) {
+            if (!j.isSmooth()) {
+                return false;
+            }
+        }
         return true;
     }
 }

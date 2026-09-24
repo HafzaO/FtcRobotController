@@ -6,148 +6,149 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-/**
- * Autonomous: full stack. Localizer -> LQR -> ChassisDynamics -> motors.
- *
- * The OpMode does hardware I/O and nothing else. Every control decision lives
- * in classes with no SDK imports, which is why they can be unit tested on a
- * desktop JVM.
- *
- * BEFORE RUNNING:
- *  1. Pick a Localizer. The stub below throws rather than returning (0,0,0),
- *     because a plausible-looking zero pose sends the robot across the field.
- *  2. MEASURE Ks, Kv, Ka for ChassisDynamics. See that class for the procedure.
- *     Until then, pass null and the normalized mixer is used instead.
- *  3. Verify motor names and directions against your wiring.
- */
+///Full Autonomous Path Follower OpMode
+/// ***Links your Localizer sensors, the LQR path engine, and your drive motors together.*** ///
 @Autonomous(name = "LQR Path Follow")
 public class PathFollowerOpMode extends LinearOpMode {
 
-    private static final double MAX_VELOCITY = 40.0;   // in/s  MEASURE
-    private static final double MAX_ACCEL    = 40.0;   // in/s^2 MEASURE
-    private static final double MAX_ANGULAR  = 3.0;    // rad/s MEASURE
+// Measured top physical capabilities of your chassis
+    private static final double MAX_VEL = 40.0;   //in/sec
+    private static final double MAX_ACCEL = 40.0; //in/sec^2
+    private static final double MAX_ANGULAR = 3.0; //radians/sec
 
-    private static final double POSITION_TOLERANCE_IN = 1.0;
-    private static final double ANGLE_TOLERANCE_RAD = 0.06;
+// Target arrival thresholds (Tolerances for completion check)
+    private static final double DIST_TOL = 1.0;   //finish if within 1 inch of target
+    private static final double ANG_TOL = 0.06;   //finish if within 0.06 radians (~3 deg) of target
 
-    private DcMotor frontLeft, frontRight, backLeft, backRight;
-    private VoltageSensor voltageSensor;
+    private DcMotor fL, fR, bL, bR;
+    private VoltageSensor batterySensor;
 
     @Override
     public void runOpMode() throws InterruptedException {
-        frontLeft  = hardwareMap.get(DcMotor.class, "frontLeft");
-        frontRight = hardwareMap.get(DcMotor.class, "frontRight");
-        backLeft   = hardwareMap.get(DcMotor.class, "backLeft");
-        backRight  = hardwareMap.get(DcMotor.class, "backRight");
-        voltageSensor = hardwareMap.voltageSensor.iterator().next();
+        fL  = hardwareMap.get(DcMotor.class, "fL");
+        fR = hardwareMap.get(DcMotor.class, "fR");
+        bL   = hardwareMap.get(DcMotor.class, "bL");
+        bR  = hardwareMap.get(DcMotor.class, "bR");
 
-        frontLeft.setDirection(DcMotor.Direction.REVERSE);
-        backLeft.setDirection(DcMotor.Direction.REVERSE);
+        batterySensor = hardwareMap.voltageSensor.iterator().next();
 
+///check
+        fL.setDirection(DcMotor.Direction.FORWARD);
+        bL.setDirection(DcMotor.Direction.FORWARD);
+
+// Build our position mapping trackers
         Localizer localizer = createLocalizer();
 
-        // Chained auto, profiled end to end so the robot never stops at a
-        // waypoint. In simulation this saved 0.7s over running the same two
-        // segments as separate profiles.
+// Design the total autonomous route path by chaining splines and straight lines together
         PathChain route = new PathChain(
-                QuinticHermitePath.fromTangents(
-                        new Vec2(-56, -56), new Vec2(90, 0),
-                        new Vec2(0, -24),   new Vec2(90, 0)),
-                new LinePath(new Vec2(0, -24), new Vec2(48, -24))
+                QuinticHermitePath.fromTans(
+                        new Vec2(-56, -56), new Vec2(90, 0), // Start position and path exit direction vector
+                        new Vec2(0, -24),   new Vec2(90, 0)), // Spline midpoint destination and entry direction vector
+                new LinePath(new Vec2(0, -24), new Vec2(48, -24)) // Connect a straight line to the end zone
         );
 
-        // Check the joints before driving. A tangent break costs roughly
-        // speed x actuation-lag of corner rounding: about 0.8in at a 90 degree
-        // joint in simulation, versus 0.06in at a smooth one.
+// Run structural seam validation scans across joints before starting the match
         for (PathChain.Joint j : route.validate()) {
             telemetry.addLine(j.toString());
         }
 
-        LQRPathFollower follower = LQRPathFollower.withDefaults(MAX_VELOCITY, MAX_ACCEL, MAX_ANGULAR);
+// Initialize our core LQR movement engine using our measured limits
+        LQRPathFollower follower = LQRPathFollower.withDefaults(MAX_VEL, MAX_ACCEL, MAX_ANGULAR);
 
-        // Uncomment once Ks/Kv/Ka are MEASURED. Until then the normalized
-        // mixer is the honest default.
+// Optional step configurations: Uncomment once your team measures exact parameters
         // follower.setChassisDynamics(ChassisDynamics.estimatedDefaults());
-
-        // Uncomment after measuring your loop-to-motion delay. One or two loop
-        // periods. Larger values reintroduce corner cutting.
         // follower.setLatencyCompensation(0.04);
 
-        telemetry.addData("Route", "%s, %.1f in, smooth=%s",
-                route.name(), route.totalLength(), route.isSmooth());
+// Print initial route distance properties to the screen dashboard
+        telemetry.addData("Route", "%s, %.1f in, smooth=%s", route.name(), route.totalLength(), route.isSmooth());
         telemetry.update();
 
+// Pause and wait for the driver to tap the active 'Start' button on the station phone
         waitForStart();
-        if (isStopRequested()) return;
+        if (isStopRequested()) {
+            return;
+        }
 
+// Snap a baseline coordinate read and push our path shape goals directly to the tracker memory
         localizer.update();
-        follower.followPath(route, 0, Math.PI / 2);
+        follower.followPath(route, 0, Math.PI / 2); // Follow path, start facing 0 rad, end facing 90 deg (PI/2)
 
+// Setup our loop clock timer tracker
         ElapsedTime loopTimer = new ElapsedTime();
         loopTimer.reset();
 
         while (opModeIsActive()) {
+//Measure the exact elapsed loop slice duration interval 'dt' in seconds
             double dt = loopTimer.seconds();
             loopTimer.reset();
-            if (dt <= 0) dt = 0.02;
+            if (dt <= 0) {
+                dt = 0.02; // Safe fallback framework value if timer registers zero
+            }
 
+//Pull fresh hardware positioning inputs and live voltage metrics
             localizer.update();
-            Localizer.Pose pose = localizer.getPose();
-            double voltage = voltageSensor.getVoltage();
+            Pose pose = localizer.getPose();
+            double volts = batterySensor.getVoltage();
 
-            double[] powers = follower.update(pose.x, pose.y, pose.heading, dt, voltage);
+//Run LQR update computations to generate required wheel power distribution maps
+            double[] powers = follower.update(pose.x, pose.y, pose.h, dt, volts);
 
+//Check the calculated values for invalid NaN (Not a Number) errors
             boolean valid = true;
-            for (double p : powers) if (Double.isNaN(p) || Double.isInfinite(p)) valid = false;
+            for (double p : powers) {
+                if (Double.isNaN(p) || Double.isInfinite(p)) {
+                    valid = false;
+                }
+            }
             if (!valid) {
-                setMotorPowers(0, 0, 0, 0);
+                setMotorPowers(0, 0, 0, 0); // Safe lock: immediately stop motors to prevent runaways
                 telemetry.addLine("WARNING: invalid power computed, forcing zero");
                 telemetry.update();
-                continue;
+                continue; // Jump directly to the next loop iteration cycle
             }
+
+// Assign verified power configurations straight out to the physical wheels
             setMotorPowers(powers[0], powers[1], powers[2], powers[3]);
 
+// Calculate current distance tracking deviations from our targeted path profile references
             LQRPathFollower.Reference ref = follower.referenceAt(follower.elapsed());
-            double posErr = Math.hypot(ref.position.x - pose.x, ref.position.y - pose.y);
-            double angErr = Math.abs(LQRPathFollower.normalizeAngle(ref.heading - pose.heading));
+            double distErr = Math.hypot(ref.position.x - pose.x, ref.position.y - pose.y);
+            double angErr = Math.abs(LQRPathFollower.normalizeAngle(ref.heading - pose.h));
 
-            // Arrival needs the profile finished AND the robot actually there.
-            // Time alone is not arrival.
-            if (follower.isFinished() && posErr < POSITION_TOLERANCE_IN && angErr < ANGLE_TOLERANCE_RAD) {
-                break;
+//Must finish path timeline AND settle within bounds
+            if (follower.isFinished() && distErr < DIST_TOL && angErr < ANG_TOL) {
+                break; // Break the execution loop, completing the autonomous path successfully
             }
 
             telemetry.addData("Segment", "%d / %d", follower.currentSegment() + 1, route.segmentCount());
             telemetry.addData("Progress", "%.2f / %.2f s", follower.elapsed(), follower.duration());
             telemetry.addData("Pose", pose.toString());
-            telemetry.addData("Error", "%.2f in / %.3f rad", posErr, angErr);
-            telemetry.addData("Battery", "%.2f V", voltage);
-            telemetry.addData("Loop", "%.0f Hz", 1.0 / dt);
-            if (follower.isSaturated()) telemetry.addLine("saturated, integral frozen");
+            telemetry.addData("Error", "%.2f in / %.3f rad", distErr, angErr);
+            telemetry.addData("Battery", "%.2f V", volts);
+            telemetry.addData("Loop Speed", "%.0f Hz", 1.0 / dt);
+
+            if (follower.isSaturated()) {
+                telemetry.addLine("saturated, integral frozen");
+            }
             telemetry.update();
         }
 
         setMotorPowers(0, 0, 0, 0);
     }
-
-    /**
-     * STUB. Return a real Localizer. See LocalizerAdapters for Pinpoint, OTOS
-     * and two-pod-plus-IMU options.
-     *
-     * Throws rather than returning a zeroed simulated pose: a pose of (0,0,0)
-     * looks plausible on telemetry and would drive the robot at full speed
-     * toward a target it thinks is far away.
-     */
     private Localizer createLocalizer() {
-        throw new UnsupportedOperationException(
-                "createLocalizer() is a stub. Return a PinpointLocalizer, OtosLocalizer, "
-                        + "or your own TwoPodImuLocalizer subclass.");
+        return new LocalizerAdapters.PinpointLocalizer(hardwareMap, "pinpoint");
     }
 
-    private void setMotorPowers(double fl, double fr, double bl, double br) {
-        frontLeft.setPower(fl);
-        frontRight.setPower(fr);
-        backLeft.setPower(bl);
-        backRight.setPower(br);
+    private Localizer createLocalizer() {
+        throw new UnsupportedOperationException(
+                "createLocalizer() is a stub. Return a PinpointLocalizer, " + "or your own TwoPodImuLocalizer subclass.");
+    }
+
+    // Unified helper interface that updates all 4 motor power ports simultaneously
+    private void setMotorPowers(double frl, double frr, double bal, double abr) {
+        fL.setPower(frl);
+        fR.setPower(frr);
+        bL.setPower(bal);
+        bR.setPower(bar);
     }
 }

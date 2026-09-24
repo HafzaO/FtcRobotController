@@ -56,7 +56,8 @@ public DriverAssist(double iQ, double iR, double iDt, double iMaxAV, double iHA)
 
 //break the angle lock ir check if there is a lock
     public void release() {
-        lockedHeading = null;
+
+    lockedHeading = null;
     }
     public boolean isLocked() {
         return lockedHeading != null;
@@ -65,10 +66,8 @@ public DriverAssist(double iQ, double iR, double iDt, double iMaxAV, double iHA)
         return lockedHeading;
     }
 
-
     //////////////////////////////////////////////////////////////////////
     ///////////////////////Cubic Bezier Curve timeeee/////////////////////
-    //////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////
     /////////////////these r so much cooler than */ right?////////////////
     //////////////////////////////////////////////////////////////////////
