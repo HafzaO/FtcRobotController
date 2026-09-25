@@ -133,9 +133,9 @@ public class LQRPathFollower {
 
         Reference ffRef = latencySeconds > 0 ? referenceAt(elapsed + latencySeconds) : ref;
 
-        double errX = ref.position.x - measuredX;
-        double errY = ref.position.y - measuredY;
-        double errTheta = normalizeAngle(ref.heading - measuredHeading);
+        double errX = ref.p.x - measuredX;
+        double errY = ref.p.y - measuredY;
+        double errTheta = normalizeAngle(ref.h - measuredHeading);
 
         double fbX = K[0][0] * errX + K[0][1] * errY + K[0][2] * errTheta;
         double fbY = K[1][0] * errX + K[1][1] * errY + K[1][2] * errTheta;
@@ -145,9 +145,9 @@ public class LQRPathFollower {
         integralY = accumulate(integralY, errY, dt);
         integralTheta = accumulate(integralTheta, errTheta, dt);
 
-        double vxField = ffRef.velocity.x + fbX + INTEGRAL_GAIN * integralX;
-        double vyField = ffRef.velocity.y + fbY + INTEGRAL_GAIN * integralY;
-        double omega   = ffRef.omega + fbTheta + INTEGRAL_GAIN * integralTheta;
+        double vxField = ffRef.v.x + fbX + INTEGRAL_GAIN * integralX;
+        double vyField = ffRef.v.y + fbY + INTEGRAL_GAIN * integralY;
+        double omega   = ffRef.o + fbTheta + INTEGRAL_GAIN * integralTheta;
 
         lastReference = ref;
 
@@ -220,6 +220,12 @@ public class LQRPathFollower {
         }
         double next = current + error * dt;
         return Math.max(-INTEGRAL_CLAMP, Math.min(INTEGRAL_CLAMP, next));
+    }
+
+    public double[] brake() {
+        path = null;
+        profile = null;
+        return new double[]{0, 0, 0, 0};
     }
 
     public boolean isFinished() {
@@ -338,21 +344,20 @@ public class LQRPathFollower {
     }
 
     public static class Reference {
-        public final Vec2 position;
-        public final Vec2 velocity;
-        public final double heading;
-        public final double omega;
-        public final double arcLength;
-        public final double curvature;
-        public Vec2 p;
+        public final Vec2 p;
+        public final Vec2 v;
+        public final double h;
+        public final double o;
+        public final double arcL;
+        public final double curv;
 
-        Reference(Vec2 position, Vec2 velocity, double heading, double o, double arcLength, double curvature) {
-            this.position = position;
-            this.velocity = velocity;
-            this.heading = heading;
-            this.omega = o;
-            this.arcLength = arcLength;
-            this.curvature = curvature;
+        Reference(Vec2 position, Vec2 velocity, double heading, double om, double arcLength, double curvature) {
+            p = position;
+            v = velocity;
+            h = heading;
+            o = om;
+            arcL = arcLength;
+            curv = curvature;
         }
     }
 }

@@ -11,9 +11,10 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 public class PathFollowerOpMode extends LinearOpMode {
 
 // Measured top physical capabilities of your chassis
-    private static final double MAX_VEL = 93.25;   //in/sec
-    private static final double MAX_ACCEL = 489.65; //in/sec^2
-    private static final double MAX_ANGULAR = 7.4; //radians/sec
+    // 25 pound, 435 rpm, 144 wheel diameter
+    private static final double MAX_VEL = 93.25;   //in/sec        (depends on bot)
+    private static final double MAX_ACCEL = 489.65; //in/sec^2     (depends on bot)
+    private static final double MAX_ANGULAR = 7.4; //radians/sec   (depends on bot)
 
 // Target arrival thresholds (Tolerances for completion check)
     private static final double DIST_TOL = 1.0;   //finish if within 1 inch of target
@@ -142,7 +143,7 @@ public class PathFollowerOpMode extends LinearOpMode {
 // Calculate current distance tracking deviations from our targeted path profile references
             LQRPathFollower.Reference ref = follower.referenceAt(follower.elapsed());
             double distErr = Math.hypot(ref.p.x - pose.x, ref.p.y - pose.y);
-            double angErr = Math.abs(LQRPathFollower.normalizeAngle(ref.heading - pose.h));
+            double angErr = Math.abs(LQRPathFollower.normalizeAngle(ref.h - pose.h));
 
 //Must finish path timeline AND settle within bounds
             if (follower.isFinished() && distErr < DIST_TOL && angErr < ANG_TOL) {

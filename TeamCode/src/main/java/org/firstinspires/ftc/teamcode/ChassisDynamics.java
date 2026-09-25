@@ -2,7 +2,7 @@ package org.firstinspires.ftc.teamcode;
 
 public class ChassisDynamics {
     // This is the blueprint for robots weight, size + motor tuning numbers
-    private double ks; // ks = static friction (raw voltage needed to overcome friction + get wheels to move)
+    private double ks; // ks = static friction (raw voltage needed to overcome friction + get wheels to move)a
     private double kv; // kv = voltage for constant velocity
     private double ka; // ka = voltage to break inertia & acc
     private double nominalV; // target voltage to tune for 11V
@@ -44,7 +44,7 @@ public class ChassisDynamics {
 
     public static ChassisDynamics estimatedDefaults() {
         // Safe generic values for a typical 18x18-inch FTC robot running goBILDA 312 RPM motors change thse tho
-        return new ChassisDynamics(0.08, 0.0155, 0.0022, 14.0, 14.0, 12.0, 12.0, 14.0, 0.45);
+        return new ChassisDynamics(0.08, 0.093, 0.0022, 14.0, 14.0, 12.0, 12.0, 1.34, 0.45);
     }
 
     public double[] wheelVs(double vx, double vy, double omega) {
