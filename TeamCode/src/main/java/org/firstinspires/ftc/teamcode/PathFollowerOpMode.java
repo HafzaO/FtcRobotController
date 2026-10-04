@@ -17,9 +17,9 @@ public class PathFollowerOpMode extends LinearOpMode {
     //private static final double MAX_ANGULAR = 7.4; //radians/sec   (depends on bot)
 
     // 25 pound, 312 rpm, 144 wheel diameter
-    private static final double MAX_VEL = 46;   //in/sec        (depends on bot)
-    private static final double MAX_ACCEL = 40; //in/sec^2     (depends on bot)
-    private static final double MAX_ANGULAR = 3.3; //radians/sec   (depends on bot)
+    private static final double MAX_VEL = 93.25;   //in/sec        (depends on bot)
+    private static final double MAX_ACCEL = 489.65; //in/sec^2     (depends on bot)
+    private static final double MAX_ANGULAR = 7.4; //radians/sec   (depends on bot)
 // Target arrival thresholds (Tolerances for completion check)
     private static final double DIST_TOL = 1.0;   //finish if within 1 inch of target
     private static final double ANG_TOL = 0.06;   //finish if within 0.06 radians (~3 deg) of target
