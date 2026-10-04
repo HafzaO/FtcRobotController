@@ -10,10 +10,12 @@ public class DriverAssist {
 
     public DriverAssist(double iQ, double iR, double iDt, double iMaxAV, double iHA) {
         if (iHA <= 0 || iHA >= 1) {
-            throw new IllegalArgumentException("headingAuthority must be between 0 and 1 (exclusive)");
+            System.err.println("ERROR: headingAuthority must be between 0 and 1 (exclusive)");
+            return;
         }
         if (iMaxAV <= 0) {
-            throw new IllegalArgumentException("maxAngularVelocity must be greater than 0");
+            System.err.println("ERROR: maxAngularVelocity must be greater than 0");
+            return;
         }
 
         // to calculate and save the LQR heading gain put input variables into the LQR math formula
@@ -125,13 +127,18 @@ public class DriverAssist {
         double handle = Math.max(4.0, dist * 0.4);
 
         // with no empty overrides blocking the internal arithmetic engine!
-        HolonomicPath c= new CubicBezierPath(
-                new Vec2(curX, curY), // Start Point
-                new Vec2(curX + Math.cos(curHeading) * handle, curY + Math.sin(curHeading) * handle), // Exit Guide Vector
-                new Vec2(tX - Math.cos(tHeading) * handle, tY - Math.sin(tHeading) * handle), // Entry Guide Vector
-                new Vec2(tX, tY) // Scoring Destination Target
-        );
-        return c;
+         new CubicBezierPath(
+                 new Vec2(curX, curY), // Start Point
+                 new Vec2(curX + Math.cos(curHeading) * handle, curY + Math.sin(curHeading) * handle), // Exit Guide Vector
+                 new Vec2(tX - Math.cos(tHeading) * handle, tY - Math.sin(tHeading) * handle), // Entry Guide Vector
+                 new Vec2(tX, tY) // Scoring Destination Target
+         ) {
+             @Override
+             public Vec2 pointAt(double t) {
+                 return null;
+             }
+         };
+        return null;
     }
 }
 
