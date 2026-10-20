@@ -27,7 +27,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 public class DriverAssistOpMode extends LinearOpMode {
 
     // top speeds for the 312 rpm bot (same numbers as the auto)
-    private static final double MAX_V = 46.0;   // in/s
+    private static final double MAX_V = 46.0;   // in/sssssssss
     private static final double MAX_A = 40.0;   // in/s^2
     private static final double MAX_ANG = 3.3;  // rad/s
 
