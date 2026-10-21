@@ -3,6 +3,8 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -39,14 +41,16 @@ public class DriverAssistOpMode extends LinearOpMode {
     private static final double STICK_D = 0.05; // ignore tiny stick drift
 
     private static final double IN_PWR = .85;
-    private static final double FWL_PWR = 0.65;
-    private static final double FWR_PWR = 0.55;
-    private static final double SPIN_S = 1.5;   // gate stays shut this long after the flywheel starts
+    private static double FWT_V = 1100;
+    private static double FWB_V = 1300;
+    private static final double SPIN_S = 2.5;   // gate stays shut this long after the flywheel starts
     private static final double G_SHUT = 0.01;   // gate position that lets them through
     private static final double G_OPEN = 0.5;   // gate position that blocks the balls
 
     private Servo intakeGate, funnelL, funnelR, armL, armR;
-    private DcMotor fL, fR, bL, bR, fwL, fwR, intake;
+    private DcMotor fL, fR, bL, bR, intake;
+    private DcMotorEx  fwT;
+    private DcMotorEx  fwB;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -55,8 +59,8 @@ public class DriverAssistOpMode extends LinearOpMode {
         fR = hardwareMap.get(DcMotor.class, "fR");
         bL = hardwareMap.get(DcMotor.class, "bL");
         bR = hardwareMap.get(DcMotor.class, "bR");
-        fwL = hardwareMap.get(DcMotor.class, "fwL");
-        fwR = hardwareMap.get(DcMotor.class, "fwR");
+        fwT = hardwareMap.get(DcMotorEx.class, "fwT");
+        fwB = hardwareMap.get(DcMotorEx.class, "fwB");
         intake = hardwareMap.get(DcMotor.class, "intake");
         intakeGate = hardwareMap.get(Servo.class, "intakeGate");
         funnelL = hardwareMap.get(Servo.class, "funnelL");
@@ -73,8 +77,8 @@ public class DriverAssistOpMode extends LinearOpMode {
         fL.setDirection(DcMotor.Direction.REVERSE);
         bL.setDirection(DcMotor.Direction.REVERSE);
 
-        fwR.setDirection(DcMotor.Direction.REVERSE);
-        fwL.setDirection(DcMotor.Direction.REVERSE);
+        fwT.setDirection(DcMotor.Direction.REVERSE);
+        fwB.setDirection(DcMotor.Direction.FORWARD);
 
         fL.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         fR.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -82,8 +86,8 @@ public class DriverAssistOpMode extends LinearOpMode {
         bR.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         // the flywheels coast down instead, braking them is rough on the gears
-        fwL.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-        fwR.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        fwT.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.FLOAT);
+        fwB.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.FLOAT);
 
         Localizer loc = makeLoc();
         DriverAssist assist = DriverAssist.withDefaults(MAX_ANG);
@@ -117,6 +121,26 @@ public class DriverAssistOpMode extends LinearOpMode {
             }
             //if (gamepad1.a) assist.lockHeading(Math.PI);
            // if (gamepad1.x) assist.lockHeading(-Math.PI / 2);
+
+            fwT.setVelocity(fwOn ? FWT_V : 0);
+            fwB.setVelocity(fwOn ? FWB_V : 0);
+
+            if (fwOn && gamepad1.a){
+                double iFWT_V = FWT_V;
+                FWT_V = iFWT_V + 25;
+            }
+            if (fwOn && gamepad1.b){
+                double eFWT_V = FWT_V;
+                FWT_V = eFWT_V - 25;
+            }
+            if (fwOn && gamepad1.x){
+                double iFWT_V = FWB_V;
+                FWB_V = iFWT_V + 25;
+            }
+            if (fwOn && gamepad1.y){
+                double eFWT_V = FWB_V;
+                FWB_V = eFWT_V - 25;
+            }
 
             // left bumper snaps to the closest 90, right bumper lets go of the lock
             if (gamepad1.left_bumper) {
@@ -160,8 +184,6 @@ public class DriverAssistOpMode extends LinearOpMode {
                 }
             }
             lastUp = upNow;
-            fwL.setPower(fwOn ? FWL_PWR : 0);
-            fwR.setPower(fwOn ? FWR_PWR : 0);
 
             // gate only opens if d-pad right is held AND the flywheel had time to spin up
             // (holding it too early does nothing, so a ball can't hit a flywheel that isn't ready)
@@ -187,14 +209,16 @@ public class DriverAssistOpMode extends LinearOpMode {
             telemetry.addData("Heading lock", assist.isLocked()
                     ? String.format("%.0f deg", Math.toDegrees(assist.lockedHeading())) : "off");
             telemetry.addData("Flywheel", !fwOn ? "off" : (fwReady ? "READY" : "spinning up"));
+            telemetry.addData("Flywheel Top", fwT.getVelocity());
+            telemetry.addData("Flywheel Bottom", fwB.getVelocity());
             telemetry.addData("Gate", feeding ? "OPEN" : (feedBtn ? "LOCKED, flywheel not ready" : "closed"));
             telemetry.update();
         }
 
         // stop everything when we're done
         setPw(0, 0, 0, 0);
-        fwL.setPower(0);
-        fwR.setPower(0);
+        fwT.setVelocity(0);
+        fwB.setVelocity(0);
         intake.setPower(0);
         intakeGate.setPosition(G_SHUT);
     }
