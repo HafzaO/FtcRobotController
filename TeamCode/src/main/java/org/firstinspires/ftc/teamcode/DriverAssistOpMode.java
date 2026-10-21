@@ -65,8 +65,8 @@ public class DriverAssistOpMode extends LinearOpMode {
         armR = hardwareMap.get(Servo.class, "armR");
 
         intakeGate.setPosition(G_SHUT); // starts shut so no balls sneak into the flywheel
-        funnelL.setPosition(0.2);
-        funnelR.setPosition(0.21);
+        funnelL.setPosition(0);
+        funnelR.setPosition(0.01);
         armL.setPosition(0);
         armR.setPosition(0);
 
