@@ -212,6 +212,7 @@ public class DriverAssistOpMode extends LinearOpMode {
             telemetry.addData("Flywheel Top", fwT.getVelocity());
             telemetry.addData("Flywheel Bottom", fwB.getVelocity());
             telemetry.addData("Gate", feeding ? "OPEN" : (feedBtn ? "LOCKED, flywheel not ready" : "closed"));
+            //telemetry.addData(m);
             telemetry.update();
         }
 
