@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -39,14 +40,18 @@ public class DriverAssistOpMode extends LinearOpMode {
     private static final double STICK_D = 0.05; // ignore tiny stick drift
 
     private static final double IN_PWR = .85;
-    private static final double FWL_PWR = 0.65;
-    private static final double FWR_PWR = 0.55;
+    private static final double FWT_V = 1100;
+    private static final double FWB_V = 1300;
     private static final double SPIN_S = 1.5;   // gate stays shut this long after the flywheel starts
     private static final double G_SHUT = 0.01;   // gate position that lets them through
     private static final double G_OPEN = 0.5;   // gate position that blocks the balls
 
     private Servo intakeGate, funnelL, funnelR, armL, armR;
-    private DcMotor fL, fR, bL, bR, fwL, fwR, intake;
+    private DcMotor fL, fR, bL, bR, intake;
+    private double x = .01;
+    private double y = 1;
+
+    private DcMotorEx fwT, fwB;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -55,26 +60,26 @@ public class DriverAssistOpMode extends LinearOpMode {
         fR = hardwareMap.get(DcMotor.class, "fR");
         bL = hardwareMap.get(DcMotor.class, "bL");
         bR = hardwareMap.get(DcMotor.class, "bR");
-        fwL = hardwareMap.get(DcMotor.class, "fwL");
-        fwR = hardwareMap.get(DcMotor.class, "fwR");
+        fwT = hardwareMap.get(DcMotorEx.class, "fwT");
+        fwB = hardwareMap.get(DcMotorEx.class, "fwB");
         intake = hardwareMap.get(DcMotor.class, "intake");
-        intakeGate = hardwareMap.get(Servo.class, "intakeGate");
+        //intakeGate = hardwareMap.get(Servo.class, "intakeGate");
         funnelL = hardwareMap.get(Servo.class, "funnelL");
         funnelR = hardwareMap.get(Servo.class, "funnelR");
         armL = hardwareMap.get(Servo.class, "armL");
         armR = hardwareMap.get(Servo.class, "armR");
 
-        intakeGate.setPosition(G_SHUT); // starts shut so no balls sneak into the flywheel
-        funnelL.setPosition(0);
-        funnelR.setPosition(0.01);
-        armL.setPosition(0);
+        //intakeGate.setPosition(G_SHUT); // starts shut so no balls sneak into the flywheel
+        funnelL.setPosition(.81);
+        funnelR.setPosition(.25);
+        armL.setPosition(0.01);
         armR.setPosition(0);
 
         fL.setDirection(DcMotor.Direction.REVERSE);
         bL.setDirection(DcMotor.Direction.REVERSE);
 
-        fwR.setDirection(DcMotor.Direction.REVERSE);
-        fwL.setDirection(DcMotor.Direction.REVERSE);
+        fwT.setDirection(DcMotor.Direction.REVERSE);
+        fwB.setDirection(DcMotor.Direction.REVERSE);
 
         fL.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         fR.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -82,8 +87,8 @@ public class DriverAssistOpMode extends LinearOpMode {
         bR.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         // the flywheels coast down instead, braking them is rough on the gears
-        fwL.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-        fwR.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        fwT.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        fwB.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
         Localizer loc = makeLoc();
         DriverAssist assist = DriverAssist.withDefaults(MAX_ANG);
@@ -111,11 +116,8 @@ public class DriverAssistOpMode extends LinearOpMode {
 
             // face buttons lock the heading
             //if (gamepad1.y) assist.lockHeading(0);
-            if (gamepad1.b) {
-                armL.setPosition(.4);
-                armR.setPosition(.4);
-            }
-            //if (gamepad1.a) assist.lockHeading(Math.PI);
+
+
            // if (gamepad1.x) assist.lockHeading(-Math.PI / 2);
 
             // left bumper snaps to the closest 90, right bumper lets go of the lock
@@ -160,25 +162,32 @@ public class DriverAssistOpMode extends LinearOpMode {
                 }
             }
             lastUp = upNow;
-            fwL.setPower(fwOn ? FWL_PWR : 0);
-            fwR.setPower(fwOn ? FWR_PWR : 0);
+            fwT.setVelocity(fwOn ? FWT_V : 0);
+            fwB.setVelocity(fwOn ? FWB_V : 0);
 
             // gate only opens if d-pad right is held AND the flywheel had time to spin up
             // (holding it too early does nothing, so a ball can't hit a flywheel that isn't ready)
             boolean fwReady = fwOn && fwTimer.seconds() >= SPIN_S;
             boolean feedBtn = gamepad1.dpad_right;
             boolean feeding = feedBtn && fwReady;
-            intakeGate.setPosition(feeding ? G_OPEN : G_SHUT);
+           // intakeGate.setPosition(feeding ? G_OPEN : G_SHUT);
 
             // intake: left trigger in, d-pad left out. feeding forces it in so the balls actually reach the gate
             double inPwr = 0;
             if (gamepad1.left_trigger > 0.1) {
                 inPwr = IN_PWR;
+                funnelL.setPosition(x);
+                funnelR.setPosition(y);
             } else if (gamepad1.dpad_left) {
                 inPwr = -IN_PWR;
             }
             if (feeding) {
                 inPwr = IN_PWR;
+            }
+
+            if (gamepad1.left_trigger < 0.1) {
+                funnelL.setPosition(.81);
+                funnelR.setPosition(.25);
             }
             intake.setPower(inPwr);
 
@@ -188,16 +197,19 @@ public class DriverAssistOpMode extends LinearOpMode {
                     ? String.format("%.0f deg", Math.toDegrees(assist.lockedHeading())) : "off");
             telemetry.addData("Flywheel", !fwOn ? "off" : (fwReady ? "READY" : "spinning up"));
             telemetry.addData("Gate", feeding ? "OPEN" : (feedBtn ? "LOCKED, flywheel not ready" : "closed"));
+
+            telemetry.addData("funnelL", x);
+            telemetry.addData("funnelR", y);
             //telemetry.addData(m);
             telemetry.update();
         }
 
         // stop everything when we're done
         setPw(0, 0, 0, 0);
-        fwL.setPower(0);
-        fwR.setPower(0);
+        fwT.setVelocity(0);
+        fwB.setVelocity(0);
         intake.setPower(0);
-        intakeGate.setPosition(G_SHUT);
+        //intakeGate.setPosition(G_SHUT);
     }
 
     // kills the little bit of stick drift
