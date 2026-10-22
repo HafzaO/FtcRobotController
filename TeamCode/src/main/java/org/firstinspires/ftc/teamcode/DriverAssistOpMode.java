@@ -70,10 +70,14 @@ public class DriverAssistOpMode extends LinearOpMode {
         armR = hardwareMap.get(Servo.class, "armR");
 
         //intakeGate.setPosition(G_SHUT); // starts shut so no balls sneak into the flywheel
-        funnelL.setPosition(.81);
-        funnelR.setPosition(.25);
-        armL.setPosition(0.01);
-        armR.setPosition(0);
+        //funnelL.setPosition(.81);
+        //funnelR.setPosition(.25);
+        /// initialization
+        armL.setPosition(.3);
+        armR.setPosition(.7);
+        /// flower
+       // armL.setPosition(.2028);
+       // armR.setPosition(.7922);
 
         fL.setDirection(DcMotor.Direction.REVERSE);
         bL.setDirection(DcMotor.Direction.REVERSE);
@@ -119,6 +123,23 @@ public class DriverAssistOpMode extends LinearOpMode {
 
 
            // if (gamepad1.x) assist.lockHeading(-Math.PI / 2);
+
+            if (gamepad1.a){
+                double l= armL.getPosition() +.001;
+                double r= armR.getPosition() -.001;
+
+                armL.setPosition(l);
+                armR.setPosition(r);
+            }
+
+
+            if (gamepad1.b){
+                double r= armR.getPosition() +.001;
+                double l= armL.getPosition() -.001;
+
+                armL.setPosition(l);
+                armR.setPosition(r);
+            }
 
             // left bumper snaps to the closest 90, right bumper lets go of the lock
             if (gamepad1.left_bumper) {
@@ -176,8 +197,8 @@ public class DriverAssistOpMode extends LinearOpMode {
             double inPwr = 0;
             if (gamepad1.left_trigger > 0.1) {
                 inPwr = IN_PWR;
-                funnelL.setPosition(x);
-                funnelR.setPosition(y);
+                armL.setPosition(.2028);
+                armR.setPosition(.7922);
             } else if (gamepad1.dpad_left) {
                 inPwr = -IN_PWR;
             }
@@ -185,10 +206,10 @@ public class DriverAssistOpMode extends LinearOpMode {
                 inPwr = IN_PWR;
             }
 
-            if (gamepad1.left_trigger < 0.1) {
-                funnelL.setPosition(.81);
-                funnelR.setPosition(.25);
-            }
+            //if (gamepad1.left_trigger < 0.1) {
+           //     armL.setPosition(.3);
+           //     armR.setPosition(.7);
+           // }
             intake.setPower(inPwr);
 
             // stuff to watch on the driver station
@@ -198,8 +219,8 @@ public class DriverAssistOpMode extends LinearOpMode {
             telemetry.addData("Flywheel", !fwOn ? "off" : (fwReady ? "READY" : "spinning up"));
             telemetry.addData("Gate", feeding ? "OPEN" : (feedBtn ? "LOCKED, flywheel not ready" : "closed"));
 
-            telemetry.addData("funnelL", x);
-            telemetry.addData("funnelR", y);
+            telemetry.addData("armL", armL.getPosition());
+            telemetry.addData("armR", armR.getPosition());
             //telemetry.addData(m);
             telemetry.update();
         }
