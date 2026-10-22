@@ -78,6 +78,7 @@ public class DriverAssistOpMode extends LinearOpMode {
         /// flower
        // armL.setPosition(.2028);
        // armR.setPosition(.7922);
+        ///
 
         fL.setDirection(DcMotor.Direction.REVERSE);
         bL.setDirection(DcMotor.Direction.REVERSE);
@@ -142,22 +143,18 @@ public class DriverAssistOpMode extends LinearOpMode {
             }
 
             // left bumper snaps to the closest 90, right bumper lets go of the lock
-            if (gamepad1.left_bumper) {
-                assist.snapToNearest(pose.h, 4);
-            }
+
             if (gamepad1.right_bumper) {
                 assist.release();
             }
 
-            boolean macroBtn = gamepad1.right_trigger > 0.5;
-
+            boolean macroBtn = gamepad1.left_bumper;
             if (macroBtn && !macroOn) {
-                macro.followPath(DriverAssist.scoreMacroPath(
-                                pose.x, pose.y, pose.h, SCORE_X, SCORE_Y, SCORE_H),
-                        pose.h, SCORE_H);
-                macroOn = true;
-            } else if (!macroBtn) {
-                macroOn = false;
+            macro.followPath(DriverAssist.scoreMacroPath(
+                    pose.x, pose.y, pose.h, SCORE_X, SCORE_Y, SCORE_H),
+               pose.h, SCORE_H);
+              macroOn = true;
+            } else if (!macroBtn) {     macroOn = false;
             }
 
             double[] pw;
@@ -197,19 +194,24 @@ public class DriverAssistOpMode extends LinearOpMode {
             double inPwr = 0;
             if (gamepad1.left_trigger > 0.1) {
                 inPwr = IN_PWR;
+            }
+            if (gamepad1.right_trigger>0.1){
+                inPwr = IN_PWR;
                 armL.setPosition(.2028);
                 armR.setPosition(.7922);
-            } else if (gamepad1.dpad_left) {
+            }
+            else if(gamepad1.right_trigger<0.1){
+                armL.setPosition(.2739);
+                armR.setPosition(.7189);
+            }
+            if (gamepad1.dpad_left) {
                 inPwr = -IN_PWR;
             }
             if (feeding) {
                 inPwr = IN_PWR;
             }
 
-            //if (gamepad1.left_trigger < 0.1) {
-           //     armL.setPosition(.3);
-           //     armR.setPosition(.7);
-           // }
+
             intake.setPower(inPwr);
 
             // stuff to watch on the driver station
