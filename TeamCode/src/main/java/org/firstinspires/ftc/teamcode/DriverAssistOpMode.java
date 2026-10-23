@@ -43,7 +43,7 @@ public class DriverAssistOpMode extends LinearOpMode {
     private static final double FWT_V = 1100;
     private static final double FWB_V = 1300;
     private static final double SPIN_S = 1.5;   // gate stays shut this long after the flywheel starts
-    private static final double G_SHUT = 0.01;   // gate position that lets them through
+    private static final double G_SHUT = 0.011;   // gate position that lets them through
     private static final double G_OPEN = 0.5;   // gate position that blocks the balls
 
     private Servo intakeGate, funnelL, funnelR, armL, armR;
